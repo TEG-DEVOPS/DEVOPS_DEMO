@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata: 
+  name: argocd-demo
+  namespace: argocd
+spec: 
+  destination: 
+    namespace: default
+    server: "https://kubernetes.default.svc"
+  project: default
+  source: 
+    path: helm-demo      # Directory in the branch of the git repo
+    repoURL: "git@github.com:Devops-MB/DEVOPS_Stack.git"       # Using private git repo url
+    targetRevision: argocd-resources
+    helm:
+      releaseName: helmdemo       # Any name you want
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
