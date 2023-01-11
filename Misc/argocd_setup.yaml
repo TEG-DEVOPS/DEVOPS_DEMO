@@ -1,0 +1,93 @@
+- name: Deploying Kubernetes Resources
+  hosts: localhost
+  connection: local
+  gather_facts: False
+  become_user: root
+  become: true
+  tasks:
+    - name: Set variables
+      set_fact:
+        argocd_k8s_namespace: argocd
+        argocd_action: present
+        #argocd_cli_version: 2.3.12
+        argocd_cli_url: "https://github.com/argoproj/argo-cd/releases/download/v2.3.12/argocd-linux-amd64"
+        argocd_cli_path: /usr/local/bin/argocd
+        
+        
+    - name: Install necessary libraries for ansible to deploy k8s resources into MINISHIFT
+      pip:
+        name:
+          - openshift
+          - pyyaml>=5.4.1
+          - kubernetes
+          - kubernetes-validate
+
+    - name: Create "argocd" namespace
+      k8s:
+        api_version: v1
+        kind: Namespace
+        name: "{{ argocd_k8s_namespace }}"
+        state: "{{ argocd_action }}"
+      #run_once: yes
+      
+      
+    - name: Install argocd yaml file
+      get_url:
+        url: https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+        dest: /tmp/argocd_install.yaml
+        owner: root
+        group: root
+        mode: 0440
+        
+        
+    - name: Make changes to the argocd yaml file for minishift compatibility purposes
+      replace:
+        path: /tmp/argocd_install.yaml
+        regexp: 'apiextensions.k8s.io/v1'
+        replace: 'apiextensions.k8s.io/v1beta1'
+        
+        
+    - name: Deploy argocd resources into argocd namespace
+      k8s:
+        namespace: "{{ argocd_k8s_namespace }}"
+        src: /tmp/argocd_install.yaml
+        state: "{{ argocd_action }}"
+        validate:
+          fail_on_error: false
+          
+    - name: Give some time for argocd resources to be fully deployed
+      wait_for:
+        timeout: 40
+      
+    - name: Install argocd CLI
+      get_url:
+        url: "{{ argocd_cli_url }}"
+        dest: "{{ argocd_cli_path }}"
+        owner: root
+        group: root
+        mode: 0755
+        
+    - name: Retrieve argocd initial admin password
+      k8s_info:
+        api_version: v1
+        kind: Secret
+        name: argocd-initial-admin-secret
+        namespace: argocd
+      register: argocd_secret
+      
+      
+    - name: Port-forward argocd service ASYNCHRONOUSLY
+      shell: kubectl port-forward svc/argocd-server 8000:80 -n argocd
+      async: 1800
+      poll: 0
+      
+      
+    - name: Login to argocd via argocd CLI
+      shell: "argocd login localhost:8000 --username admin --password $(echo {{ argocd_secret.resources[0].data.password }} | base64 -d; echo) --insecure"
+      
+      # In the Chrome address bar, type “chrome://flags/#allow-insecure-localhost“
+      # Select the “Enable” link
+      
+      
+#     - name: Apply argocd application yaml file
+      

@@ -1,0 +1,35 @@
+- name: Deploying Kubernetes Resources
+  hosts: localhost
+  connection: local
+  gather_facts: False
+  become_user: root
+  become: true
+  tasks:
+    - name: Download the latest kubectl binary
+      get_url:
+        url: https://dl.k8s.io/release/v1.26.0/bin/linux/amd64/kubectl
+        dest: /tmp
+        
+    - name: Move binary to local
+      shell: mv /tmp/kubectl /usr/local/bin/kubectl
+      
+    - name: Give executable permission for the kubectl binary
+      file: 
+        path: /usr/local/bin/kubectl
+        state: file
+        mode: a+x
+      
+    - name: Install helm binary
+      get_url: 
+        url: https://get.helm.sh/helm-v3.10.3-linux-amd64.tar.gz
+        dest: /tmp
+      
+    - name: Unarchive the helm binary
+      unarchive:
+        src: /tmp/helm-v3.10.3-linux-amd64.tar.gz
+        dest: /tmp
+        
+    - name: Move the helm binary to local
+      shell: mv linux-amd64/helm /usr/local/bin/helm
+      args:
+        chdir: /tmp

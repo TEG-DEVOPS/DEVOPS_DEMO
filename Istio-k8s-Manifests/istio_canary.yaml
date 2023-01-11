@@ -1,0 +1,137 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: front-deploy
+spec:
+  selector:
+    matchLabels:
+      app: front-deploy
+  replicas: 1
+  template: 
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "true"
+      labels:
+        app: front-deploy
+    spec:
+      containers:
+      - image: tegexploredevops/images:canary-front
+        name: front-deploy       
+        ports:
+        - containerPort: 8000
+        
+---
+        
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: back-deploy-original
+spec:
+  selector:
+    matchLabels:
+      app: back-deploy
+  replicas: 1
+  template: # template for the pods
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "true"
+      labels:
+        app: back-deploy
+        version: original
+    spec:
+      containers:
+      - name: back-deploy 
+        image: tegexploredevops/images:canary-back-original
+        ports:
+        - containerPort: 9000
+        
+---
+        
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: back-deploy-canary
+spec:
+  selector:
+    matchLabels:
+      app: back-deploy
+  replicas: 1
+  template: # template for the pods
+    metadata:
+      annotations:
+        sidecar.istio.io/inject: "true"
+      labels:
+        app: back-deploy
+        version: canary
+    spec:
+      containers:
+      - name: back-deploy 
+        image: tegexploredevops/images:canary-back-canary
+        ports:
+        - containerPort: 9000
+        
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: front-service
+spec:
+  selector:
+    app: front-deploy
+  ports:
+    - name: http
+      port: 6000
+      targetPort: 8000
+      
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: back-service
+spec:
+  selector:
+    app: back-deploy
+  ports:
+    - name: http
+      port: 5000
+      targetPort: 9000
+
+---
+
+kind: VirtualService
+apiVersion: networking.istio.io/v1alpha3
+metadata:
+  name: end-virtualservice        # "just" a name for this virtualservice
+  namespace: default
+spec:
+  hosts:
+    - back-service                   # The Service DNS (ie the regular K8S Service) name that we're applying routing rules to.
+  http:
+    - route:
+        - destination:
+            host: back-service       # The Target DNS name
+            subset: original-group  # The name defined in the DestinationRule
+          weight: 50
+        - destination:
+            host: back-service      # The Target DNS name
+            subset: canary-group                              # The name defined in the DestinationRule
+          weight: 50
+          
+---
+
+kind: DestinationRule       # Defining which pods should be part of each subset
+apiVersion: networking.istio.io/v1alpha3
+metadata:
+  name: end-destinationrule # This can be anything you like.
+  namespace: default
+spec:
+  host: back-service                 # Service
+  subsets:
+    - labels:                         # SELECTOR.
+        version: original             # find pods with label "safe"
+      name: original-group
+    - labels:
+        version: canary
+      name: canary-group
